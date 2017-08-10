@@ -233,7 +233,7 @@ sys_auth_passwd(Authctxt *authctxt, const char *password)
 */
 int sys_auth_passwd(Authctxt *authctxt, const char *password)
 {
-	char *tmp, *dom;
+	char *tmp, *dom = NULL;
 	int dom_len = 0,exitCode=0;
 	if ((tmp = strchr(authctxt->pw->pw_name, '@') != NULL))
 	{

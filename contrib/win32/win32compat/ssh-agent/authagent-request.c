@@ -253,7 +253,7 @@ done:
 int process_custompwdauth_request(struct sshbuf* request, struct sshbuf* response, struct agent_connection* con)
 {
 	int r = -1;
-	char *user, *pwd, *dom, *provider;
+	char *user, *pwd, *dom = NULL, *provider;
 	size_t user_len, pwd_len, dom_len, provider_len;
 	wchar_t *userw = NULL, *pwdw = NULL, *domw = NULL, *providerw = NULL;
 	HANDLE token = NULL, dup_token = NULL, lsa_handle = 0;
@@ -271,17 +271,17 @@ int process_custompwdauth_request(struct sshbuf* request, struct sshbuf* respons
 	int exitCode = 0;
 	if (sshbuf_get_string_direct(request, &user, &user_len) != 0 ||
 		sshbuf_get_cstring(request, &pwd, &pwd_len) != 0 ||
-		user_len > MAX_USER_LEN ||
 		sshbuf_get_string_direct(request, &dom, &dom_len) != 0 ||
+		user_len > MAX_USER_LEN || pwd_len == 0 ||
 		sshbuf_get_string_direct(request, &provider, &provider_len) != 0) {
 		debug("invalid custompwdauth auth request");
 		goto done;
 	}
 
 	/* convert everything to utf16 only if its not NULL */
-	if (((userw = utf8_to_utf16(user)) == NULL) ||
-		((pwdw = utf8_to_utf16(pwd)) == NULL) ||
-		((domw = utf8_to_utf16(domw)) == NULL))
+	if ((userw = utf8_to_utf16(user)) == NULL ||
+		(pwdw = utf8_to_utf16(pwd)) == NULL ||
+		(dom && (domw = utf8_to_utf16(dom)) == NULL) )
 	{
 		debug("out of memory");
 		goto done;
@@ -295,7 +295,7 @@ int process_custompwdauth_request(struct sshbuf* request, struct sshbuf* respons
 	if (ret = LsaRegisterLogonProcess(&logon_process_name, &lsa_handle, &mode) != STATUS_SUCCESS)
 		goto done;
 
-	if (ret = LsaLookupAuthenticationPackage(lsa_handle, &auth_package_name, &auth_package_id) != STATUS_SUCCESS)
+	/*if (ret = LsaLookupAuthenticationPackage(lsa_handle, &auth_package_name, &auth_package_id) != STATUS_SUCCESS)
 		goto done;
 
 	logon_info_size = malloc((wcslen(userw) + wcslen(pwdw) + wcslen(domw) + 3) * sizeof(wchar_t));
@@ -328,7 +328,8 @@ int process_custompwdauth_request(struct sshbuf* request, struct sshbuf* respons
 		&subStatus) != STATUS_SUCCESS) {
 		debug("LsaLogonUser failed %d", ret);
 		goto done;
-	}
+	}*/
+	token = LogonUser(user, name. ....);
 	if ((dup_token = duplicate_token_for_client(con, token)) == NULL)
 		goto done;
 
