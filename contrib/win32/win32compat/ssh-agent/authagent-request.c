@@ -249,6 +249,36 @@ done:
 	return dup_t;
 }
 
+int process_custompwdauth_request(struct sshbuf* request, struct sshbuf* response, struct agent_connection* con) 
+{
+	int r = -1;
+	char *user, *pwd, *dom, *provider;
+	size_t user_len, pwd_len, dom_len, provider_len;
+	wchar_t *userw = NULL, *pwdw = NULL, *domw = NULL, *providerw = NULL;
+	HANDLE token = NULL, dup_token = NULL;
+	
+	if (sshbuf_get_string_direct(request, &user, &user_len) != 0 ||
+		sshbuf_get_cstring(request, &pwd, &pwd_len) != 0 ||
+		user_len > MAX_USER_LEN ||
+		sshbuf_get_string_direct(request, &dom, &dom_len) != 0 ||
+		sshbuf_get_string_direct(request, &provider, &provider_len) != 0) {
+		debug("invalid pubkey auth request");
+		goto done;
+	}
+
+	/* convert everything to utf16 only if its not NULL */
+	if ((userw = utf8_to_utf16(user)) == NULL) {
+		debug("out of memory");
+		goto done;
+	}
+
+	/* call into LSA provider , get and duplicate token */
+
+done:
+	/* delete allocated memory*/
+	return -1;
+}
+
 int process_pubkeyauth_request(struct sshbuf* request, struct sshbuf* response, struct agent_connection* con) {
 	int r = -1;
 	char *key_blob, *user, *sig, *blob;
@@ -387,6 +417,8 @@ int process_privagent_request(struct sshbuf* request, struct sshbuf* response, s
 		return process_pubkeyauth_request(request, response, con);
 	else if (memcmp(opn, LOAD_USER_PROFILE_REQUEST, opn_len) == 0)
 		return process_loadprofile_request(request, response, con);
+	else if (memcmp(opn, CUSTOMPWDAUTH_REQUEST, opn_len) == 0)
+		return process_custompwdauth_request(request, response, con);
 	else {
 		debug("unknown auth request: %s", opn);
 		return -1;
