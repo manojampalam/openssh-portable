@@ -231,97 +231,21 @@ sys_auth_passwd(Authctxt *authctxt, const char *password)
 /*
 * Authenticate on Windows - Call LogonUser and retrieve user token
 */
-
-static void
-InitLsaString(LSA_STRING *lsa_string, const char *str)
-{
-	if (str == NULL)
-		memset(lsa_string, 0, sizeof(LSA_STRING));
-	else {
-		lsa_string->Buffer = (char *)str;
-		lsa_string->Length = strlen(str);
-		lsa_string->MaximumLength = lsa_string->Length + 1;
-	}
-}
-
 int sys_auth_passwd(Authctxt *authctxt, const char *password)
 {
-	wchar_t *user_utf16 = NULL, *udom_utf16 = NULL, *pwd_utf16 = NULL, *tmp;
-	HANDLE lsa_handle = 0, token = 0;
-	LSA_OPERATIONAL_MODE mode;
-	ULONG auth_package_id;
-	NTSTATUS ret, subStatus;
-	void * logon_info = NULL;
-	size_t logon_info_size;
-	LSA_STRING logon_process_name, auth_package_name, originName;
-	TOKEN_SOURCE sourceContext;
-	PKERB_INTERACTIVE_PROFILE pProfile = NULL;
-	LUID logonId;
-	QUOTA_LIMITS quotas;
-	DWORD cbProfile;
-	int exitCode = 0;
-
-	if ((user_utf16 = utf8_to_utf16(authctxt->pw->pw_name)) == NULL ||
-		(pwd_utf16 = utf8_to_utf16(password)) == NULL) {
-		fatal("out of memory");
-		goto done;
+	char *tmp, *dom;
+	int dom_len = 0,exitCode=0;
+	if ((tmp = strchr(authctxt->pw->pw_name, '@') != NULL))
+	{
+		dom_len = strlen(tmp) + 1;
+		dom = (char*)malloc(dom_len * sizeof(char));
+		memcpy(dom, tmp, dom_len);
+		dom[dom_len] = '\0';
 	}
-
-	if ((tmp = wcschr(user_utf16, L'@')) != NULL) {
-		udom_utf16 = tmp + 1;
-		*tmp = L'\0';
+	if (authctxt->auth_token = mm_auth_custompwd(authctxt->pw->pw_name, password, dom) != NULL)
+	{
+		exitCode = 1;
 	}
-	InitLsaString(&logon_process_name, "sshd");
-	InitLsaString(&auth_package_name, "SSH-LSA");
-
-	InitLsaString(&originName, "sshd");
-	if (ret = LsaRegisterLogonProcess(&logon_process_name, &lsa_handle, &mode) != STATUS_SUCCESS)
-		goto done;
-
-	if (ret = LsaLookupAuthenticationPackage(lsa_handle, &auth_package_name, &auth_package_id) != STATUS_SUCCESS)
-		goto done;
-
-	logon_info_size = malloc((wcslen(user_utf16) + wcslen(pwd_utf16) + wcslen(udom_utf16) + 3) * sizeof(wchar_t));
-	logon_info = (wchar_t *)malloc(logon_info_size);
-
-	wcscpy(logon_info, user_utf16);
-	wcscat(logon_info, L";");
-	wcscat(logon_info, pwd_utf16);
-	wcscat(logon_info, L";");
-	wcscat(logon_info, udom_utf16);
-	memcpy(sourceContext.SourceName, "sshd", sizeof(sourceContext.SourceName));
-
-	if (AllocateLocallyUniqueId(&sourceContext.SourceIdentifier) != TRUE)
-		goto done;
-
-	if (ret = LsaLogonUser(lsa_handle,
-		&originName,
-		Network,
-		auth_package_id,
-		logon_info,
-		logon_info_size,
-		NULL,
-		&sourceContext,
-		(PVOID*)&pProfile,
-		&cbProfile,
-		&logonId,
-		&token,
-		&quotas,
-		&subStatus) != STATUS_SUCCESS) {
-		debug("LsaLogonUser failed %d", ret);
-		goto done;
-	}
-
-	authctxt->auth_token = (void*)(INT_PTR)token;
-	exitCode = 1;
-done:
-	if (lsa_handle)
-		LsaDeregisterLogonProcess(lsa_handle);
-	if (logon_info)
-		free(logon_info);
-	if (pProfile)
-		LsaFreeReturnBuffer(pProfile);
-
 	return exitCode;
 }
 #endif   /* WINDOWS */
