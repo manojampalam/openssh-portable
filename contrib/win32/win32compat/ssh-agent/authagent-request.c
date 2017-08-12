@@ -268,7 +268,7 @@ int process_custompwdauth_request(struct sshbuf* request, struct sshbuf* respons
 	LUID logonId;
 	QUOTA_LIMITS quotas;
 	DWORD cbProfile;
-	int exitCode = 0;
+	int exitCode = -1;
 	if (sshbuf_get_string_direct(request, &user, &user_len) != 0 ||
 		sshbuf_get_cstring(request, &pwd, &pwd_len) != 0 ||
 		sshbuf_get_string_direct(request, &dom, &dom_len) != 0 ||
@@ -292,15 +292,20 @@ int process_custompwdauth_request(struct sshbuf* request, struct sshbuf* respons
 	InitLsaString(&auth_package_name, "custompwdauth-lsa");
 
 	InitLsaString(&originName, "sshd");
+	
 	if (ret = LsaRegisterLogonProcess(&logon_process_name, &lsa_handle, &mode) != STATUS_SUCCESS)
 		goto done;
 
-	/*if (ret = LsaLookupAuthenticationPackage(lsa_handle, &auth_package_name, &auth_package_id) != STATUS_SUCCESS)
+	if (ret = LsaLookupAuthenticationPackage(lsa_handle, &auth_package_name, &auth_package_id) != STATUS_SUCCESS)
 		goto done;
 
-	logon_info_size = malloc((wcslen(userw) + wcslen(pwdw) + wcslen(domw) + 3) * sizeof(wchar_t));
+	logon_info_size = ((wcslen(userw) + wcslen(pwdw) + wcslen(domw) + 3) * sizeof(wchar_t));
 	logon_info = (wchar_t *)malloc(logon_info_size);
-	
+	if (NULL == logon_info)
+	{
+		debug("out of memory");
+		goto done;
+	}
 	wcscpy(logon_info, userw);
 	wcscat(logon_info, L";");
 	wcscat(logon_info, pwdw);
@@ -328,31 +333,26 @@ int process_custompwdauth_request(struct sshbuf* request, struct sshbuf* respons
 		&subStatus) != STATUS_SUCCESS) {
 		debug("LsaLogonUser failed %d", ret);
 		goto done;
-	}*/
-	token = LogonUser(user, name. ....);
+	}
+	
+	debug("LsaLogonUser return token %d", token);
 	if ((dup_token = duplicate_token_for_client(con, token)) == NULL)
 		goto done;
-
+	debug("after duplicating token, write response, dup token %d",dup_token);
 	if (sshbuf_put_u32(response, (int)(intptr_t)dup_token) != 0)
 		goto done;
-
-	exitCode = 1;
+	debug("response written");
+	exitCode = 0;
 done:
 	/* delete allocated memory*/
-	if ((r == -1) && (sshbuf_put_u8(response, SSH_AGENT_FAILURE) == 0))
-		r = 0;
+	if ((exitCode == -1) && (sshbuf_put_u8(response, SSH_AGENT_FAILURE) == 0))
+		exitCode = 0;
 	if (lsa_handle)
 		LsaDeregisterLogonProcess(lsa_handle);
 	if (logon_info)
 		free(logon_info);
 	if (pProfile)
 		LsaFreeReturnBuffer(pProfile);
-	if (user)
-		free(user);
-	if (pwd)
-		free(pwd);
-	if (dom)
-		free(dom);
 	if (userw)
 		free(userw);
 	if (pwdw)
@@ -361,7 +361,7 @@ done:
 		free(domw);
 	if (token)
 		CloseHandle(token);
-	return -1;
+	return exitCode;
 }
 
 int process_pubkeyauth_request(struct sshbuf* request, struct sshbuf* response, struct agent_connection* con) {
