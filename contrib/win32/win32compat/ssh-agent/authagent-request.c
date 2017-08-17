@@ -289,14 +289,14 @@ int process_custompwdauth_request(struct sshbuf* request, struct sshbuf* respons
 	
 	/* call into LSA provider , get and duplicate token */
 	InitLsaString(&logon_process_name, "ssh-agent");
-	InitLsaString(&auth_package_name, "custompwdauth-lsa");
+	InitLsaString(&auth_package_name, provider);
 
 	InitLsaString(&originName, "sshd");
 	
-	if (ret = LsaRegisterLogonProcess(&logon_process_name, &lsa_handle, &mode) != STATUS_SUCCESS)
+	if ((ret = LsaRegisterLogonProcess(&logon_process_name, &lsa_handle, &mode)) != STATUS_SUCCESS)
 		goto done;
 
-	if (ret = LsaLookupAuthenticationPackage(lsa_handle, &auth_package_name, &auth_package_id) != STATUS_SUCCESS)
+	if ((ret = LsaLookupAuthenticationPackage(lsa_handle, &auth_package_name, &auth_package_id)) != STATUS_SUCCESS)
 		goto done;
 
 	logon_info_size = ((wcslen(userw) + wcslen(pwdw) + wcslen(domw) + 3) * sizeof(wchar_t));
@@ -317,7 +317,7 @@ int process_custompwdauth_request(struct sshbuf* request, struct sshbuf* respons
 	if (AllocateLocallyUniqueId(&sourceContext.SourceIdentifier) != TRUE)
 		goto done;
 
-	if (ret = LsaLogonUser(lsa_handle,
+	ret = LsaLogonUser(lsa_handle,
 		&originName,
 		Network,
 		auth_package_id,
@@ -330,18 +330,20 @@ int process_custompwdauth_request(struct sshbuf* request, struct sshbuf* respons
 		&logonId,
 		&token,
 		&quotas,
-		&subStatus) != STATUS_SUCCESS) {
+		&subStatus);
+	debug("LSALogonUser returned %d status, %d substatus, %d", ret, subStatus,GetLastError());
+	debug("token value = %d", (int)(intptr_t)token);
+	if (ret != STATUS_SUCCESS) {
 		debug("LsaLogonUser failed %d", ret);
 		goto done;
 	}
 	
-	debug("LsaLogonUser return token %d", token);
 	if ((dup_token = duplicate_token_for_client(con, token)) == NULL)
 		goto done;
-	debug("after duplicating token, write response, dup token %d",dup_token);
+
 	if (sshbuf_put_u32(response, (int)(intptr_t)dup_token) != 0)
 		goto done;
-	debug("response written");
+
 	exitCode = 0;
 done:
 	/* delete allocated memory*/

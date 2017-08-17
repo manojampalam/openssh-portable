@@ -214,13 +214,13 @@ int mm_load_profile(const char* user_name, u_int token)
 }
 
 void* 
-mm_auth_custompwd(const char* user, const char* password, const char* dom)
+mm_auth_custompwd(const char* user, const char* password, const char* dom, const char* lsaProviderName)
 {
 	/* Pass key challenge material to privileged agent to retrieve token upon successful authentication */
 	struct sshbuf *msg = NULL;
 	u_char *blob = NULL;
 	size_t blen = 0;
-	DWORD token = 0;
+	HANDLE token = 0;
 	int agent_fd;
 
 	while (1) {
@@ -235,7 +235,7 @@ mm_auth_custompwd(const char* user, const char* password, const char* dom)
 			sshbuf_put_cstring(msg, user) != 0 ||
 			sshbuf_put_cstring(msg, password) != 0 ||
 			sshbuf_put_cstring(msg, dom) != 0 ||
-			sshbuf_put_cstring(msg, "custompwdauth-lsa") != 0 ||
+			sshbuf_put_cstring(msg, lsaProviderName) != 0 ||
 			ssh_request_reply(agent_fd, msg, msg) != 0) {
 			debug("unable to send custompwdauth request");
 			break;
