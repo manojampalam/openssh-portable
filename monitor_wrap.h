@@ -104,5 +104,4 @@ void* mm_auth_pubkey(const char*, const struct sshkey *, const u_char *, size_t,
 int mm_load_profile(const char*, u_int );
 void* mm_auth_custompwd(const char* user, const char* password, const char* dom, const char* lsaProviderName);
 
-
 #endif /* _MM_WRAP_H_ */

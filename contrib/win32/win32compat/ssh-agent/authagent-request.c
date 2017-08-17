@@ -317,7 +317,7 @@ int process_custompwdauth_request(struct sshbuf* request, struct sshbuf* respons
 	if (AllocateLocallyUniqueId(&sourceContext.SourceIdentifier) != TRUE)
 		goto done;
 
-	ret = LsaLogonUser(lsa_handle,
+	if ((ret = LsaLogonUser(lsa_handle,
 		&originName,
 		Network,
 		auth_package_id,
@@ -330,10 +330,7 @@ int process_custompwdauth_request(struct sshbuf* request, struct sshbuf* respons
 		&logonId,
 		&token,
 		&quotas,
-		&subStatus);
-	debug("LSALogonUser returned %d status, %d substatus, %d", ret, subStatus,GetLastError());
-	debug("token value = %d", (int)(intptr_t)token);
-	if (ret != STATUS_SUCCESS) {
+		&subStatus)) != STATUS_SUCCESS) {
 		debug("LsaLogonUser failed %d", ret);
 		goto done;
 	}
