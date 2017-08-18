@@ -27,8 +27,8 @@ load_auth_config(const char *filename, AuthConfig *authConfig)
 	if ((f = fopen(filename, "r")) == NULL) {
 		return;
 	}
-	memset(authConfig->authProvider, 0, strlen(authConfig->authProvider));
 	if (fgets(line, sizeof(line), f)) {
+		memset(authConfig->authProvider, 0, strlen(authConfig->authProvider));
 		strcpy(authConfig->authProvider, line);
 	}
 	fclose(f);
