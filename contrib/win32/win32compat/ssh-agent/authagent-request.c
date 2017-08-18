@@ -290,7 +290,6 @@ int process_custompwdauth_request(struct sshbuf* request, struct sshbuf* respons
 	/* call into LSA provider , get and duplicate token */
 	InitLsaString(&logon_process_name, "ssh-agent");
 	InitLsaString(&auth_package_name, provider);
-
 	InitLsaString(&originName, "sshd");
 	
 	if ((ret = LsaRegisterLogonProcess(&logon_process_name, &lsa_handle, &mode)) != STATUS_SUCCESS)

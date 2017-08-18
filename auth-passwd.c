@@ -55,8 +55,6 @@
 #include "auth.h"
 #include "auth-options.h"
 #include "authfd.h"
-#include <Ntsecapi.h>
-#include <ntstatus.h>
 #include "authconfig.h"
 #if defined(WINDOWS)
 #include "monitor_wrap.h"

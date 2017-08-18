@@ -122,8 +122,9 @@
 #include "ssh-sandbox.h"
 #include "version.h"
 #include "ssherr.h"
+#if defined(WINDOWS)
 #include "authconfig.h"
-
+#endif
 /* Re-exec fds */
 #define REEXEC_DEVCRYPTO_RESERVED_FD	(STDERR_FILENO + 1)
 #define REEXEC_STARTUP_PIPE_FD		(STDERR_FILENO + 2)
@@ -1493,9 +1494,10 @@ main(int ac, char **av)
 	/* Initialize configuration options to their default values. */
 	initialize_server_options(&options);
 
+#if defined(WINDOWS)
 	/*Initialize auth configuration with default values*/
 	initialize_auth_config(&authconfig);
-
+#endif
 	/* Parse command-line arguments. */
 	while ((opt = getopt(ac, av,
 	    "C:E:b:c:f:g:h:k:o:p:u:46DQRTdeiqrt")) != -1) {
