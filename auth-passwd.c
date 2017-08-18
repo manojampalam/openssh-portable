@@ -55,13 +55,15 @@
 #include "auth.h"
 #include "auth-options.h"
 #include "authfd.h"
-#include "authconfig.h"
+
 #if defined(WINDOWS)
+#include "authconfig.h"
 #include "monitor_wrap.h"
+extern AuthConfig authconfig;
 #endif
+
 extern Buffer loginmsg;
 extern ServerOptions options;
-extern AuthConfig authconfig;
 
 #ifdef HAVE_LOGIN_CAP
 extern login_cap_t *lc;
