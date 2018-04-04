@@ -46,8 +46,11 @@
 #include "misc_internal.h"
 #include "lsa_missingdefs.h"
 #include "Debug.h"
+#include "inc\pwd.h"
 
 #pragma warning(push, 3)
+
+extern int am_system;
 
 static void
 InitLsaString(LSA_STRING *lsa_string, const char *str)
@@ -333,6 +336,7 @@ done:
 }
 
 HANDLE generate_sshd_virtual_token();
+HANDLE generate_sshd_token_as_admin();
 
 HANDLE
 get_user_token(char* user) {
@@ -345,9 +349,23 @@ get_user_token(char* user) {
 	}
 
 	if (wcscmp(user_utf16, L"sshd") == 0) {
+		/* not running as system, try generating sshd token as admin */
+		if (!am_system && (token = generate_sshd_token_as_admin()) != 0)
+			goto done;
+			
 		if ((token = generate_sshd_virtual_token()) != 0)
 			goto done;
 		debug3("unable to generate sshd virtual token, falling back to s4u");
+	}
+
+	if (!am_system) {
+		struct passwd* pwd = w32_getpwuid(0);
+		if (strcmpi(pwd->pw_name, user) == 0)
+			OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS_P, &token);
+		else
+			debug("unable to generate user token as sshd is not running as SYSTEM");
+
+		goto done;
 	}
 
 	if ((token = generate_s4u_user_token(user_utf16)) == 0) {
@@ -372,6 +390,11 @@ int load_user_profile(HANDLE user_token, char* user) {
 	int r = 0;
 	HANDLE profile_handle = NULL;
 	wchar_t *user_utf16 = NULL, *dom_utf16 = NULL, *tmp;
+
+	if (!am_system) {
+		debug("Not running as SYSTEM: skipping loading user profile");
+		return 0;
+	}
 
 	if ((user_utf16 = utf8_to_utf16(user)) == NULL) {
 		debug("out of memory");
@@ -483,6 +506,25 @@ InitUnicodeString(PUNICODE_STRING dest, PWSTR source)
 	dest->Buffer = source;
 	dest->Length = (USHORT)(wcslen(source) * sizeof(wchar_t));
 	dest->MaximumLength = dest->Length + 2;
+}
+
+HANDLE generate_sshd_token_as_admin()
+{
+	//UUID uuid;
+	//RPC_CWSTR rpc_str;
+	//USER_INFO_1003 info;
+	//HANDLE token = 0;
+	///* reset SSHD account password with a random one and do logonUser */
+	//UuidCreate(&uuid);
+	//UuidToStringW(&uuid, (RPC_WSTR*)&rpc_str);
+
+	//info.usri1003_password = (LPWSTR)rpc_str;
+	//NetUserSetInfo(NULL, L"sshd", 1003, (LPBYTE)&info, NULL);
+
+	//LogonUserW(L"sshd", NULL, (LPCWSTR)rpc_str, LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT, &token);
+	HANDLE token = 0;
+	OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS_P , &token);
+	return token;
 }
 
 HANDLE generate_sshd_virtual_token()
