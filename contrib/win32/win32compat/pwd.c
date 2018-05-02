@@ -324,7 +324,7 @@ user_from_uid(uid_t uid, int nouser)
 uid_t
 getuid(void)
 {
-	return 0;
+	return 1;
 }
 
 gid_t
@@ -336,7 +336,7 @@ getgid(void)
 uid_t
 geteuid(void)
 {
-	return 0;
+	return 1;
 }
 
 gid_t

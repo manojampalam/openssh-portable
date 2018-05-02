@@ -439,10 +439,12 @@ fileio_open(const char *path_utf8, int flags, mode_t mode)
 	}
 
 	/* if opening null device, point to Windows equivalent */
-	if (strncmp(path_utf8, NULL_DEVICE, sizeof(NULL_DEVICE)) == 0) 
-		path_utf8 = NULL_DEVICE_WIN;
+	if (strncmp(path_utf8, NULL_DEVICE, sizeof(NULL_DEVICE)) == 0)
+		path_utf16 = utf8_to_utf16(NULL_DEVICE_WIN);
+	else
+		path_utf16 = resolved_path_utf16(path_utf8);
 
-	if ((path_utf16 = resolved_path_utf16(path_utf8)) == NULL) {
+	if (path_utf16 == NULL) {
 		errno = ENOMEM;
 		debug3("utf8_to_utf16 failed for file:%s error:%d", path_utf8, GetLastError());
 		return NULL;

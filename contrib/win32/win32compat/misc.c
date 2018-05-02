@@ -123,6 +123,10 @@ char* _sys_errlist_ext[] = {
 	"Operation would block"					/* EWOULDBLOCK     140 */
 };
 
+char* chroot_path = NULL;
+/* UTF-16 version of the above */
+wchar_t* chroot_pathw = NULL;
+
 int
 usleep(unsigned int useconds)
 {
@@ -745,7 +749,7 @@ w32_rmdir(const char *path)
 int
 w32_chdir(const char *dirname_utf8)
 {
-	wchar_t *dirname_utf16 = utf8_to_utf16(dirname_utf8);
+	wchar_t *dirname_utf16 = resolved_path_utf16(dirname_utf8);
 	if (dirname_utf16 == NULL) {
 		errno = ENOMEM;
 		return -1;
@@ -874,13 +878,38 @@ realpath(const char *path, char resolved[PATH_MAX])
 
 	char tempPath[PATH_MAX];
 	size_t path_len = strlen(path);
+	resolved[0] = '\0';
 
 	if (path_len > PATH_MAX - 1) {
 		errno = EINVAL;
 		return NULL;
 	}
 
-	if ((path_len >= 2) && (path[0] == '/') && path[1] && (path[2] == ':')) {
+	if (path_len == 1 && path[0] == '/') {
+		resolved[0] = '/';
+		resolved[1] = '\0';
+		return resolved;
+	}
+
+	if (path_len == 6) {
+		char *tmplate = "/x:/..";
+		strcat(resolved, path);
+		resolved[1] = 'x';
+		if (strcmp(tmplate, resolved) == 0) {
+			resolved[0] = '/';
+			resolved[1] = '\0';
+			return resolved;
+		}
+	}
+
+	if (chroot_path) {
+		resolved[0] = '\0';
+		strcat(resolved, chroot_path);
+		if (path[0] != '/')
+			strcat(resolved, "/");
+		strcat(resolved, path);
+	}
+	else if ((path_len >= 2) && (path[0] == '/') && path[1] && (path[2] == ':')) {
 		if((r = strncpy_s(resolved, PATH_MAX, path + 1, path_len)) != 0 ) /* skip the first '/' */ {
 			debug3("memcpy_s failed with error: %d.", r);
 			return NULL;
@@ -899,14 +928,33 @@ realpath(const char *path, char resolved[PATH_MAX])
 	if (_fullpath(tempPath, resolved, PATH_MAX) == NULL)
 		return NULL;
 
-	convertToForwardslash(tempPath);
+	if (chroot_path) {
+		if (strlen(tempPath) <= strlen(chroot_path)) {
+			resolved[0] = '/';
+			resolved[1] = '\0';
+			return resolved;
+		}
+		if (memcmp(chroot_path, tempPath, strlen(chroot_path)) != 0)
+			return NULL;
 
-	resolved[0] = '/'; /* will be our first slash in /x:/users/test1 format */
-	if ((r = strncpy_s(resolved+1, PATH_MAX - 1, tempPath, sizeof(tempPath) - 1)) != 0) {
-		debug3("memcpy_s failed with error: %d.", r);
-		return NULL;
+		resolved[0] = '\0';
+		strcat(resolved, tempPath + strlen(chroot_path));
+
+		if (resolved[0] != '\\')
+			return NULL;
+
+		convertToForwardslash(resolved);
+		return resolved;		
 	}
-	return resolved;
+	else {
+		convertToForwardslash(tempPath);
+		resolved[0] = '/'; /* will be our first slash in /x:/users/test1 format */
+		if ((r = strncpy_s(resolved + 1, PATH_MAX - 1, tempPath, sizeof(tempPath) - 1)) != 0) {
+			debug3("memcpy_s failed with error: %d.", r);
+			return NULL;
+		}
+		return resolved;
+	}
 }
 
 wchar_t*
@@ -917,6 +965,17 @@ resolved_path_utf16(const char *input_path)
 	wchar_t * resolved_path = utf8_to_utf16(input_path);
 	if (resolved_path == NULL)
 		return NULL;
+
+	if (chroot_path) {
+		wchar_t* wchroot = utf8_to_utf16(chroot_path);
+		wchar_t * resolved_path_new = malloc(2 * (wcslen(wchroot) + wcslen(resolved_path) + 1));
+		resolved_path_new[0] = L'\0';
+		wcscat(resolved_path_new, wchroot);
+		wcscat(resolved_path_new, resolved_path);
+		free(resolved_path);
+		free(wchroot);
+		resolved_path = resolved_path_new;
+	}
 
 	int resolved_len = (int) wcslen(resolved_path);
 	const int variable_len = (int) wcslen(PROGRAM_DATAW);
@@ -1535,4 +1594,24 @@ localtime_r(const time_t *timep, struct tm *result)
 	struct tm *t = localtime(timep);
 	memcpy(result, t, sizeof(struct tm));
 	return t;
+}
+
+int
+chroot(const char *path)
+{
+	/* TODO: validate and normalize path */
+
+	;
+
+	if ((chroot_path = _strdup(path)) == NULL ||
+	    (chroot_pathw = utf8_to_utf16(path)) == NULL) {
+		errno = ENOMEM;
+		return -1;
+	}
+	
+	/* TODO - set the env variable just in time in a posix_spawn_chroot like API */
+#define POSIX_CHROOTW L"c28fc6f98a2c44abbbd89d6a3037d0d9_POSIX_CHROOT"
+	_wputenv_s(POSIX_CHROOTW, chroot_pathw);
+
+	return 0;
 }
