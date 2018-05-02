@@ -73,9 +73,6 @@ void fd_decode_state(char*);
 /* __progname */
 char* __progname = "";
 
-extern char* chroot_path;
-extern wchar_t* chroot_pathw;
-
 /* initializes mapping table*/
 static int
 fd_table_initialize()

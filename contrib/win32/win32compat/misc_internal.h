@@ -24,6 +24,9 @@
 
 static char *machine_domain_name;
 
+extern char* chroot_path;
+extern wchar_t* chroot_pathw;
+
 /* removes first '/' for Windows paths that are unix styled. Ex: /c:/ab.cd */
 wchar_t * resolved_path_utf16(const char *);
 void w32posix_initialize();
@@ -38,6 +41,7 @@ void file_time_to_unix_time(const LPFILETIME, time_t *);
 int file_attr_to_st_mode(wchar_t * path, DWORD attributes);
 void invalid_parameter_handler(const wchar_t *, const wchar_t *, const wchar_t *, unsigned int, uintptr_t);
 void to_lower_case(char *s);
+void to_wlower_case(wchar_t *s);
 int get_machine_domain_name(wchar_t *domain, int size);
 wchar_t* get_program_data_path();
 HANDLE get_user_token(char* user);

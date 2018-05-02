@@ -967,13 +967,11 @@ resolved_path_utf16(const char *input_path)
 		return NULL;
 
 	if (chroot_path) {
-		wchar_t* wchroot = utf8_to_utf16(chroot_path);
-		wchar_t * resolved_path_new = malloc(2 * (wcslen(wchroot) + wcslen(resolved_path) + 1));
+		wchar_t * resolved_path_new = malloc(2 * (wcslen(chroot_pathw) + wcslen(resolved_path) + 1));
 		resolved_path_new[0] = L'\0';
-		wcscat(resolved_path_new, wchroot);
+		wcscat(resolved_path_new, chroot_pathw);
 		wcscat(resolved_path_new, resolved_path);
 		free(resolved_path);
-		free(wchroot);
 		resolved_path = resolved_path_new;
 	}
 
@@ -1395,6 +1393,13 @@ to_lower_case(char *s)
 		*s = tolower((u_char)*s);
 }
 
+void 
+to_wlower_case(wchar_t *s)
+{
+	for (; *s; s++)
+		*s = towlower(*s);
+}
+
 static int
 get_final_mode(int allow_mode, int deny_mode)
 {	
@@ -1601,14 +1606,10 @@ chroot(const char *path)
 {
 	/* TODO: validate and normalize path */
 
-	;
+	chroot_path = _strdup(path);
+	to_lower_case(chroot_path);
+	chroot_pathw = utf8_to_utf16(chroot_path);
 
-	if ((chroot_path = _strdup(path)) == NULL ||
-	    (chroot_pathw = utf8_to_utf16(path)) == NULL) {
-		errno = ENOMEM;
-		return -1;
-	}
-	
 	/* TODO - set the env variable just in time in a posix_spawn_chroot like API */
 #define POSIX_CHROOTW L"c28fc6f98a2c44abbbd89d6a3037d0d9_POSIX_CHROOT"
 	_wputenv_s(POSIX_CHROOTW, chroot_pathw);
