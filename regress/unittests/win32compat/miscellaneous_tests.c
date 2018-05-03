@@ -1,4 +1,4 @@
-#include "includes.h"
+﻿#include "includes.h"
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <misc_internal.h>
@@ -191,12 +191,66 @@ void test_realpath()
 }
 
 void
+test_chroot()
+{
+	int fd;
+	char path[MAX_PATH], test_root[MAX_PATH];
+
+	/* test directory setup */
+	_wsystem(L"RD /S /Q chroot-testdir >NUL 2>&1");
+	CreateDirectoryW(L"chroot-testdir", NULL);
+	CreateDirectoryW(L"chroot-testdir\\jail", NULL);
+	CreateDirectoryW(L"chroot-testdir\\jail\\d1", NULL);
+	_wsystem(L"echo sample-payload > chroot-testdir\\jail\\d1\\F.Txt");
+	CreateDirectoryW(L"chroot-testdir\\jail\\d2", NULL);
+		
+	TEST_START("chroot on invalid path");
+	ASSERT_INT_EQ(chroot("blah"), -1);
+	ASSERT_INT_EQ(chroot("\\c:\\blah"), -1);
+	ASSERT_INT_EQ(chroot("/c:/blah"), -1);
+	TEST_DONE();
+
+	TEST_START("real chroot now");
+	getcwd(path, MAX_PATH);
+	getcwd(test_root, MAX_PATH);
+	strcat(path, "\\chroot-testdir\\jail");
+	ASSERT_INT_EQ(chdir(path), 0);
+	ASSERT_INT_EQ(chroot(path), 0);
+	TEST_DONE();
+
+	TEST_START("chdir; getcwd and realpath");
+	ASSERT_PTR_NE(getcwd(path, MAX_PATH), NULL);
+	ASSERT_STRING_EQ(path, "\\");
+	ASSERT_INT_NE(chdir(test_root), 0);
+	ASSERT_INT_EQ(chdir("d1"), 0);
+	ASSERT_PTR_NE(getcwd(path, MAX_PATH), NULL);
+	ASSERT_STRING_EQ(path, "\\d1");
+	TEST_DONE();
+
+	TEST_START("file io within jail");
+	ASSERT_INT_NE(fd = open("\\d1\\f.txt", 0), -1);
+	close(fd);
+	ASSERT_INT_NE(fd = open("\\d1/f.txt", 0), -1);
+	close(fd);
+	ASSERT_INT_NE(fd = open("/d1/f.txt", 0), -1);
+	close(fd);
+	ASSERT_INT_EQ(chdir("\\d1"), 0);
+	ASSERT_INT_NE(fd = open("f.txt", 0), -1);
+	close(fd);
+	//ASSERT_STRING_EQ(getcwd )
+	TEST_DONE();
+
+	//_wsystem(L"RD /S /Q chroot-testdir >NUL 2>&1");
+}
+
+void
 miscellaneous_tests()
 {
 	//test_ioctl();
-	test_path_conversion_utilities();
-	test_sanitizedpath();
-	test_pw();
-	test_realpath();
-	test_statvfs();
+	//test_path_conversion_utilities();
+	//test_sanitizedpath();
+	//test_pw();
+	//test_realpath();
+	//test_statvfs();
+	test_chroot();
 }

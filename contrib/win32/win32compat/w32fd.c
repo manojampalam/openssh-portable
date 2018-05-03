@@ -123,7 +123,7 @@ fd_table_initialize()
 		_wdupenv_s(&chroot_pathw, NULL, POSIX_CHROOTW);
 		if (chroot_pathw != NULL) {
 			chroot_path = utf16_to_utf8(chroot_pathw);
-			_wputenv_s(POSIX_CHROOTW, L"");
+			chroot_path_len = strlen(chroot_path);
 		}
 	}
 

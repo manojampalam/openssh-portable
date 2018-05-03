@@ -133,6 +133,7 @@ char* _sys_errlist_ext[] = {
 };
 
 char* chroot_path = NULL;
+int chroot_path_len = 0;
 /* UTF-16 version of the above */
 wchar_t* chroot_pathw = NULL;
 
@@ -265,9 +266,10 @@ w32_fopen_utf8(const char *input_path, const char *mode)
 
 	/* if opening null device, point to Windows equivalent */
 	if (strncmp(input_path, NULL_DEVICE, sizeof(NULL_DEVICE)) == 0)
-		input_path = NULL_DEVICE_WIN;
-
-	wpath = resolved_path_utf16(input_path);
+		wpath = utf8_to_utf16(NULL_DEVICE_WIN);
+	else
+		wpath = resolved_path_utf16(input_path);
+	
 	wmode = utf8_to_utf16(mode);
 	if (wpath == NULL || wmode == NULL)
 	{
@@ -796,6 +798,30 @@ w32_getcwd(char *buffer, int maxlen)
 		return NULL;
 	free(putf8);
 
+	to_lower_case(buffer);
+
+	if (chroot_path) {
+		/* ensure we are within chroot jail */
+		char c = buffer[chroot_path_len];
+		if ( strlen(buffer) < chroot_path_len ||
+		    memcmp(chroot_path, buffer, chroot_path_len) != 0 ||
+		    (c != '\0' && c!= '\\') ) {
+			errno = EOTHER;
+			error("cwb is not currently within chroot");
+			return NULL;
+		}
+
+		/* is cwb chroot ?*/
+		if (c == '\0') {
+			buffer[0] = '\\';
+			buffer[1] = '\0';
+		}
+		else {
+			char *tail = buffer + chroot_path_len;
+			memmove_s(buffer, maxlen, tail, strlen(tail) + 1);
+		}
+	}
+
 	return buffer;
 }
 
@@ -969,20 +995,28 @@ realpath(const char *path, char resolved[PATH_MAX])
 wchar_t*
 resolved_path_utf16(const char *input_path)
 {
-	if (!input_path) return NULL;
+	wchar_t *resolved_path = NULL;
 
-	wchar_t * resolved_path = utf8_to_utf16(input_path);
-	if (resolved_path == NULL)
+	if (!input_path) 
 		return NULL;
 
 	if (chroot_path) {
-		wchar_t * resolved_path_new = malloc(2 * (wcslen(chroot_pathw) + wcslen(resolved_path) + 1));
-		resolved_path_new[0] = L'\0';
-		wcscat(resolved_path_new, chroot_pathw);
-		wcscat(resolved_path_new, resolved_path);
-		free(resolved_path);
-		resolved_path = resolved_path_new;
+		char actual_path[MAX_PATH];
+		actual_path[0] = '\0';
+		strcat_s(actual_path, MAX_PATH, chroot_path);
+		/* if input_path is not relative wrt chroot, add cwb within chroot */
+		if (*input_path != '\\' && *input_path != '/') {
+			w32_getcwd(actual_path + chroot_path_len, MAX_PATH - chroot_path_len);
+			strcat_s(actual_path, MAX_PATH, "\\");
+		}
+		strcat_s(actual_path, MAX_PATH, input_path);
+		resolved_path = utf8_to_utf16(actual_path);
 	}
+	else
+		resolved_path = utf8_to_utf16(input_path);
+	
+	if (resolved_path == NULL)
+		return NULL;
 
 	int resolved_len = (int) wcslen(resolved_path);
 	const int variable_len = (int) wcslen(PROGRAM_DATAW);
@@ -1539,11 +1573,38 @@ localtime_r(const time_t *timep, struct tm *result)
 int
 chroot(const char *path)
 {
-	/* TODO: validate and normalize path */
+	char cwd[MAX_PATH];
 
-	chroot_path = _strdup(path);
+	if (strcmp(path, ".") == 0) {
+		if (w32_getcwd(cwd, MAX_PATH) == NULL)
+			return -1;
+		path = (const char *)cwd;
+	} else if (*(path + 1) != ':') {
+		errno = ENOTSUP;
+		error("chroot only supports absolute paths");
+		return -1;
+	} else {
+		/* TODO - ensure path exists and is a directory */
+	}
+
+	if ((chroot_path = _strdup(path)) == NULL) {
+		errno = ENOMEM;
+		return -1;
+	}
+
 	to_lower_case(chroot_path);
-	chroot_pathw = utf8_to_utf16(chroot_path);
+	convertToBackslash(chroot_path);
+
+	/* strip trailing \ */
+	if (chroot_path[strlen(chroot_path) - 1] == '\\')
+		chroot_path[strlen(chroot_path) - 1] = '\0';
+
+	chroot_path_len = strlen(chroot_path);
+
+	if ((chroot_pathw = utf8_to_utf16(chroot_path)) == NULL) {
+		errno = ENOMEM;
+		return -1;
+	}
 
 	/* TODO - set the env variable just in time in a posix_spawn_chroot like API */
 #define POSIX_CHROOTW L"c28fc6f98a2c44abbbd89d6a3037d0d9_POSIX_CHROOT"

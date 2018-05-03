@@ -28,6 +28,7 @@
 static char *machine_domain_name;
 
 extern char* chroot_path;
+extern int chroot_path_len;
 extern wchar_t* chroot_pathw;
 
 /* removes first '/' for Windows paths that are unix styled. Ex: /c:/ab.cd */
