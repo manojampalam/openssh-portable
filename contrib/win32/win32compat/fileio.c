@@ -422,7 +422,7 @@ cleanup:
 	return ret;
 }
 
-/* return 1 if true, 0 otherwise */
+/* returns 1 if true, 0 otherwise */
 int
 file_in_chroot_jail(HANDLE handle, const char* path_utf8) {
 	/* ensure final path is within chroot */

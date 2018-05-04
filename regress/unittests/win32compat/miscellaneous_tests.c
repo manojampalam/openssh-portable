@@ -301,11 +301,11 @@ test_chroot()
 void
 miscellaneous_tests()
 {
-	//test_ioctl();
-	//test_path_conversion_utilities();
-	//test_sanitizedpath();
-	//test_pw();
-	//test_realpath();
-	//test_statvfs();
+	test_ioctl();
+	test_path_conversion_utilities();
+	test_sanitizedpath();
+	test_pw();
+	test_realpath();
+	test_statvfs();
 	test_chroot();
 }

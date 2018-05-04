@@ -132,6 +132,7 @@ char* _sys_errlist_ext[] = {
 	"Operation would block"					/* EWOULDBLOCK     140 */
 };
 
+/* chroot state */
 char* chroot_path = NULL;
 int chroot_path_len = 0;
 /* UTF-16 version of the above */
@@ -285,7 +286,6 @@ w32_fopen_utf8(const char *input_path, const char *mode)
 		goto cleanup;
 	}	
 
-	
 	if (chroot_pathw && !nonfs_dev) {
 		/* ensure final path is within chroot */
 		HANDLE h = (HANDLE)_get_osfhandle(_fileno(f));
@@ -826,7 +826,7 @@ w32_getcwd(char *buffer, int maxlen)
 			return NULL;
 		}
 
-		/* is cwb chroot ?*/
+		/* is cwd chroot ?*/
 		if (c == '\0') {
 			buffer[0] = '\\';
 			buffer[1] = '\0';
