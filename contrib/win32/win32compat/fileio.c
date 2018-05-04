@@ -96,6 +96,7 @@ errno_from_Win32Error(int win32_error)
 		return EEXIST;
 	case ERROR_FILE_NOT_FOUND:
 	case ERROR_PATH_NOT_FOUND:
+	case ERROR_INVALID_NAME:
 		return ENOENT;
 	default:
 		return win32_error;
@@ -421,14 +422,36 @@ cleanup:
 	return ret;
 }
 
+/* return 1 if true, 0 otherwise */
+int
+file_in_chroot_jail(HANDLE handle, const char* path_utf8) {
+	/* ensure final path is within chroot */
+	wchar_t path_buf[MAX_PATH], *final_path;
+	if (GetFinalPathNameByHandleW(handle, path_buf, MAX_PATH, 0) == 0) {
+		debug3("failed to get final path of file:%s error:%d", path_utf8, GetLastError());
+		return 0;
+	}
+	final_path = path_buf + 4;
+	to_wlower_case(final_path);
+	if ((wcslen(final_path) < wcslen(chroot_pathw)) ||
+		memcmp(final_path, chroot_pathw, 2 * wcslen(chroot_pathw)) != 0 ||
+		final_path[wcslen(chroot_pathw)] != '\\') {
+		debug4("access denied due to attempt to escape chroot jail");
+		return 0;
+	}
+
+	return 1;
+}
+
 /* open() implementation. Uses CreateFile to open file, console, device, etc */
 struct w32_io*
 fileio_open(const char *path_utf8, int flags, mode_t mode)
 {
 	struct w32_io* pio = NULL;
 	struct createFile_flags cf_flags;
-	HANDLE handle;
+	HANDLE handle = INVALID_HANDLE_VALUE;
 	wchar_t *path_utf16 = NULL;
+	int nonfs_dev = 0; /* opening a non file system device */
 
 	debug4("open - pathname:%s, flags:%d, mode:%d", path_utf8, flags, mode);
 	/* check input params*/
@@ -439,10 +462,14 @@ fileio_open(const char *path_utf8, int flags, mode_t mode)
 	}
 
 	/* if opening null device, point to Windows equivalent */
-	if (strncmp(path_utf8, NULL_DEVICE, sizeof(NULL_DEVICE)) == 0) 
-		path_utf8 = NULL_DEVICE_WIN;
+	if (strncmp(path_utf8, NULL_DEVICE, sizeof(NULL_DEVICE)) == 0) {
+		nonfs_dev = 1;
+		path_utf16 = utf8_to_utf16(NULL_DEVICE_WIN);
+	}
+	else
+		path_utf16 = resolved_path_utf16(path_utf8);
 
-	if ((path_utf16 = resolved_path_utf16(path_utf8)) == NULL) {
+	if (path_utf16 == NULL) {
 		errno = ENOMEM;
 		debug3("utf8_to_utf16 failed for file:%s error:%d", path_utf8, GetLastError());
 		return NULL;
@@ -463,6 +490,10 @@ fileio_open(const char *path_utf8, int flags, mode_t mode)
 		goto cleanup;
 	}
 
+	if (chroot_pathw && !nonfs_dev && !file_in_chroot_jail(handle, path_utf8)) {		
+		errno = EACCES;
+		goto cleanup;
+	}
 	
 	pio = (struct w32_io*)malloc(sizeof(struct w32_io));
 	if (pio == NULL) {
@@ -478,11 +509,16 @@ fileio_open(const char *path_utf8, int flags, mode_t mode)
 		pio->fd_status_flags = O_NONBLOCK;
 
 	pio->handle = handle;
+	handle = INVALID_HANDLE_VALUE;
+
 cleanup:
 	if ((&cf_flags.securityAttributes != NULL) && (&cf_flags.securityAttributes.lpSecurityDescriptor != NULL))
 		LocalFree(cf_flags.securityAttributes.lpSecurityDescriptor);
 	if(path_utf16)
 		free(path_utf16);
+	if (handle != INVALID_HANDLE_VALUE)
+		CloseHandle(handle);
+
 	return pio;
 }
 
