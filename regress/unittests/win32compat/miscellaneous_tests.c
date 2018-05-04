@@ -187,6 +187,16 @@ void test_realpath()
 	ret = realpath("/c:", resolved_path);
 	ASSERT_STRING_EQ(ret, expectedOutput2);
 
+	ASSERT_PTR_NE(ret = realpath("/c:/..", resolved_path), NULL);
+	ASSERT_STRING_EQ(ret, "/");
+
+	ASSERT_PTR_NE(ret = realpath("/", resolved_path), NULL);
+	ASSERT_STRING_EQ(ret, "/");
+
+	ASSERT_PTR_NE(ret = realpath("\\", resolved_path), NULL);
+	ASSERT_STRING_EQ(ret, "/");
+
+
 	TEST_DONE();
 }
 
@@ -194,6 +204,7 @@ void
 test_chroot()
 {
 	int fd;
+	FILE *f;
 	char path[MAX_PATH], test_root[MAX_PATH];
 
 	/* test directory setup */
@@ -225,6 +236,12 @@ test_chroot()
 	ASSERT_INT_EQ(chdir("d1"), 0);
 	ASSERT_PTR_NE(getcwd(path, MAX_PATH), NULL);
 	ASSERT_STRING_EQ(path, "\\d1");
+	ASSERT_PTR_NE(realpath(".", path), NULL);
+	ASSERT_STRING_EQ(path, "/d1");
+	ASSERT_PTR_NE(realpath("..\\..\\", path), NULL);
+	ASSERT_STRING_EQ(path, "/");
+	ASSERT_PTR_NE(realpath("..", path), NULL);
+	ASSERT_STRING_EQ(path, "/");
 	TEST_DONE();
 
 	TEST_START("file io within jail");
@@ -234,10 +251,23 @@ test_chroot()
 	close(fd);
 	ASSERT_INT_NE(fd = open("/d1/f.txt", 0), -1);
 	close(fd);
+	ASSERT_INT_NE(fd = open("/dev/null", 0), -1);
+	close(fd);
+	ASSERT_PTR_NE(f = fopen("\\d1\\f.txt", "r"), NULL);
+	fclose(f);
+	ASSERT_PTR_NE(f = fopen("/dev/null", "w"), NULL);
+	fclose(f);
+	ASSERT_INT_EQ(chdir("/"), 0);
+	ASSERT_INT_NE(fd = open("d1/f.txt", 0), -1);
+	close(fd);
+	ASSERT_PTR_NE(f = fopen("d1\\f.txt", "r"), NULL);
+	fclose(f);
 	ASSERT_INT_EQ(chdir("\\d1"), 0);
 	ASSERT_INT_NE(fd = open("f.txt", 0), -1);
 	close(fd);
-	//ASSERT_STRING_EQ(getcwd )
+	ASSERT_PTR_NE(f = fopen("f.txt", "r"), NULL);
+	fclose(f);
+
 	TEST_DONE();
 
 	//_wsystem(L"RD /S /Q chroot-testdir >NUL 2>&1");

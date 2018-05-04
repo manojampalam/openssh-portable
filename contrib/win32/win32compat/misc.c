@@ -920,12 +920,15 @@ realpath(const char *path, char resolved[PATH_MAX])
 		return NULL;
 	}
 
-	if (path_len == 1 && path[0] == '/') {
+	/* resolve root directory to the same */
+	if (path_len == 1 && (path[0] == '/' || path[0] == '\\')) {
 		resolved[0] = '/';
 		resolved[1] = '\0';
 		return resolved;
 	}
 
+	/* resolve this common case scenario to root */
+	/* "cd .." from within a drive root */
 	if (path_len == 6) {
 		char *tmplate = "/x:/..";
 		strcat(resolved, path);
@@ -940,8 +943,11 @@ realpath(const char *path, char resolved[PATH_MAX])
 	if (chroot_path) {
 		resolved[0] = '\0';
 		strcat(resolved, chroot_path);
-		if (path[0] != '/')
+		/* if path is relative, add cwd within chroot */
+		if (path[0] != '/' || path[0] != '\\') {
+			w32_getcwd(resolved + chroot_path_len, PATH_MAX - chroot_path_len);
 			strcat(resolved, "/");
+		}
 		strcat(resolved, path);
 	}
 	else if ((path_len >= 2) && (path[0] == '/') && path[1] && (path[2] == ':')) {
