@@ -252,6 +252,7 @@ w32_fopen_utf8(const char *input_path, const char *mode)
 	char first3_bytes[3];
 	int status = 1;
 	errno_t r = 0;
+	int nonfs_dev = 0; /* opening a non file system device */
 
 	if (mode == NULL || mode[1] != '\0') {
 		errno = ENOTSUP;
@@ -265,8 +266,10 @@ w32_fopen_utf8(const char *input_path, const char *mode)
 	}
 
 	/* if opening null device, point to Windows equivalent */
-	if (strncmp(input_path, NULL_DEVICE, sizeof(NULL_DEVICE)) == 0)
+	if (strncmp(input_path, NULL_DEVICE, sizeof(NULL_DEVICE)) == 0) {
+		nonfs_dev = 1;
 		wpath = utf8_to_utf16(NULL_DEVICE_WIN);
+	}
 	else
 		wpath = resolved_path_utf16(input_path);
 	
@@ -280,7 +283,19 @@ w32_fopen_utf8(const char *input_path, const char *mode)
 	if ((_wfopen_s(&f, wpath, wmode) != 0) || (f == NULL)) {
 		debug3("Failed to open file:%s error:%d", input_path, errno);
 		goto cleanup;
-	}		
+	}	
+
+	
+	if (chroot_pathw && !nonfs_dev) {
+		/* ensure final path is within chroot */
+		HANDLE h = (HANDLE)_get_osfhandle(_fileno(f));
+		if (!file_in_chroot_jail(h, input_path)) {
+			fclose(f);
+			f = NULL;
+			errno = EACCES;
+			goto cleanup;
+		}
+	}
 
 	/* BOM adjustments for file streams*/
 	if (mode[0] == 'w' && fseek(f, 0, SEEK_SET) != EBADF) {

@@ -422,13 +422,34 @@ cleanup:
 	return ret;
 }
 
+/* return 1 if true, 0 otherwise */
+int
+file_in_chroot_jail(HANDLE handle, const char* path_utf8) {
+	/* ensure final path is within chroot */
+	wchar_t path_buf[MAX_PATH], *final_path;
+	if (GetFinalPathNameByHandleW(handle, path_buf, MAX_PATH, 0) == 0) {
+		debug3("failed to get final path of file:%s error:%d", path_utf8, GetLastError());
+		return 0;
+	}
+	final_path = path_buf + 4;
+	to_wlower_case(final_path);
+	if ((wcslen(final_path) < wcslen(chroot_pathw)) ||
+		memcmp(final_path, chroot_pathw, 2 * wcslen(chroot_pathw)) != 0 ||
+		final_path[wcslen(chroot_pathw)] != '\\') {
+		debug4("access denied due to attempt to escape chroot jail");
+		return 0;
+	}
+
+	return 1;
+}
+
 /* open() implementation. Uses CreateFile to open file, console, device, etc */
 struct w32_io*
 fileio_open(const char *path_utf8, int flags, mode_t mode)
 {
 	struct w32_io* pio = NULL;
 	struct createFile_flags cf_flags;
-	HANDLE handle;
+	HANDLE handle = INVALID_HANDLE_VALUE;
 	wchar_t *path_utf16 = NULL;
 	int nonfs_dev = 0; /* opening a non file system device */
 
@@ -469,23 +490,9 @@ fileio_open(const char *path_utf8, int flags, mode_t mode)
 		goto cleanup;
 	}
 
-	if (chroot_pathw && !nonfs_dev) {
-		/* ensure final path is within chroot */
-		wchar_t path_buf[MAX_PATH], *final_path;
-		if (GetFinalPathNameByHandleW(handle, path_buf, MAX_PATH, 0) == 0) {
-			errno = errno_from_Win32LastError();
-			debug3("failed to get final path of file:%s error:%d", path_utf8, GetLastError());
-			goto cleanup;
-		}
-		final_path = path_buf + 4;
-		to_wlower_case(final_path);
-		if ((wcslen(final_path) < wcslen(chroot_pathw)) ||
-		    memcmp(final_path, chroot_pathw, 2 * wcslen(chroot_pathw)) != 0 ||
-		    final_path[wcslen(chroot_pathw)] != '\\') {
-			debug4("access denied due to attempt to escape chroot jail");
-			errno = EACCES;
-			goto cleanup;
-		}
+	if (chroot_pathw && !nonfs_dev && !file_in_chroot_jail(handle, path_utf8)) {		
+		errno = EACCES;
+		goto cleanup;
 	}
 	
 	pio = (struct w32_io*)malloc(sizeof(struct w32_io));
@@ -502,11 +509,16 @@ fileio_open(const char *path_utf8, int flags, mode_t mode)
 		pio->fd_status_flags = O_NONBLOCK;
 
 	pio->handle = handle;
+	handle = INVALID_HANDLE_VALUE;
+
 cleanup:
 	if ((&cf_flags.securityAttributes != NULL) && (&cf_flags.securityAttributes.lpSecurityDescriptor != NULL))
 		LocalFree(cf_flags.securityAttributes.lpSecurityDescriptor);
 	if(path_utf16)
 		free(path_utf16);
+	if (handle != INVALID_HANDLE_VALUE)
+		CloseHandle(handle);
+
 	return pio;
 }
 
