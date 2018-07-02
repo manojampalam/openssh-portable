@@ -1,5 +1,4 @@
-﻿If ($PSVersiontable.PSVersion.Major -le 2) {$PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path}
-Import-Module $PSScriptRoot\CommonUtils.psm1 -Force
+﻿Import-Module $PSScriptRoot\CommonUtilsV2.psm1 -Force
 #todo: -i -q -v -l -c -C
 #todo: -S -F -V -e
 $tC = 1
@@ -8,25 +7,14 @@ $suite = "sshclient"
         
 Describe "E2E scenarios for ssh client" -Tags "CI" {
     BeforeAll {        
-        if($OpenSSHTestInfo -eq $null)
-        {
-            Throw "`$OpenSSHTestInfo is null. Please run Set-OpenSSHTestEnvironment to set test environments."
-        }
-
-        $server = $OpenSSHTestInfo["Target"]
-        $port = $OpenSSHTestInfo["Port"]
-        $ssouser = $OpenSSHTestInfo["SSOUser"]
-
-        $testDir = Join-Path $OpenSSHTestInfo["TestDataPath"] $suite
+        Setup-TestTarget
+        
+        $testDir = Get-TestWorkingDir
+        $testDir = Join-Path $testDir $suite
         if(-not (Test-Path $testDir))
         {
             $null = New-Item $testDir -ItemType directory -Force -ErrorAction SilentlyContinue
         }
-        $acl = Get-Acl $testDir
-        $rights = [System.Security.AccessControl.FileSystemRights]"Read, Write"
-        $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule($ssouser, $rights, "ContainerInherit,Objectinherit", "None", "Allow")
-        $acl.SetAccessRule($accessRule)
-        Set-Acl -Path $testDir -AclObject $acl
         $platform = Get-Platform
         #skip on ps 2 becase non-interactive cmd require a ENTER before it returns on ps2
         $skip = ($platform -eq [PlatformType]::Windows) -and ($PSVersionTable.PSVersion.Major -le 2)
@@ -116,7 +104,7 @@ Describe "E2E scenarios for ssh client" -Tags "CI" {
         }
         
         It "$tC.$tI - remote echo command" {
-            iex "$sshDefaultCmd echo 1234" | Should Be "1234"
+            iex "ssh ptest_target echo 1234" | Should Be "1234"
         }
 
     }
@@ -127,7 +115,7 @@ Describe "E2E scenarios for ssh client" -Tags "CI" {
 
         It "$tC.$tI - various exit codes" {
             foreach ($i in (0,1,4,5,44)) {
-                ssh -p $port $ssouser@$server exit $i
+                ssh ptest_target exit $i
                 $LASTEXITCODE | Should Be $i
             }            
         }
@@ -139,12 +127,12 @@ Describe "E2E scenarios for ssh client" -Tags "CI" {
         AfterAll{$tC++}
 
         It "$tC.$tI - stdout to file" -skip:$skip {
-            ssh test_target powershell get-process > $stdoutFile
+            ssh ptest_target powershell get-process > $stdoutFile
             $stdoutFile | Should Contain "ProcessName"
         }
 
         It "$tC.$tI - stdout to PS object" {
-            $o = ssh test_target echo 1234
+            $o = ssh ptest_target echo 1234
             $o | Should Be "1234"
         }
 
@@ -154,7 +142,7 @@ Describe "E2E scenarios for ssh client" -Tags "CI" {
             $EncodedText =[Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($str))
             $h = "hello123"
             # ignore error stream using 2> $null
-            $o = $h | ssh test_target PowerShell -NoProfile -NonInteractive -ExecutionPolicy Unrestricted -EncodedCommand $EncodedText 2> $null
+            $o = $h | ssh ptest_target PowerShell -NoProfile -NonInteractive -ExecutionPolicy Unrestricted -EncodedCommand $EncodedText 2> $null
             $o | Should Be "8"
         }
 
@@ -172,13 +160,13 @@ Describe "E2E scenarios for ssh client" -Tags "CI" {
             $str = "begin {} process { Add-Content -Encoding Ascii -path $testdst1 -Value ([string]`$input)} end { }"
             $EncodedText =[Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($str))
             # ignore error stream using 2> $null
-            get-content $testsrc | ssh test_target PowerShell -NoProfile -NonInteractive -ExecutionPolicy Unrestricted -EncodedCommand $EncodedText 2> $null
+            get-content $testsrc | ssh ptest_target PowerShell -NoProfile -NonInteractive -ExecutionPolicy Unrestricted -EncodedCommand $EncodedText 2> $null
             (dir $testdst1).Length | Should Be (dir $testsrc).Length
 
             # stream file from remote to local
             $testdst2 = Join-Path $testDir "$tC.$tI.testdst2"
             $null | Set-Content $testdst2
-            (ssh test_target powershell get-content $testdst1 -Encoding Ascii) | Set-Content $testdst2 -Encoding ASCII
+            (ssh ptest_target powershell get-content $testdst1 -Encoding Ascii) | Set-Content $testdst2 -Encoding ASCII
             (dir $testdst2).Length | Should Be (dir $testsrc).Length
 
         }
@@ -197,7 +185,7 @@ Describe "E2E scenarios for ssh client" -Tags "CI" {
             if($shell_path -ne $null) {
                 ConfigureDefaultShell -default_shell_path $shell_path -default_shell_cmd_option_val "/c"
 
-                $o = ssh test_target Write-Output 1234
+                $o = ssh ptest_target Write-Output 1234
                 $o | Should Be "1234"
             }
         }
@@ -207,7 +195,7 @@ Describe "E2E scenarios for ssh client" -Tags "CI" {
             if($shell_path -ne $null) {
                 ConfigureDefaultShell -default_shell_path $shell_path -default_shell_cmd_option_val "/c"
 
-                $o = ssh test_target where cmd
+                $o = ssh ptest_target where cmd
                 $o | Should Contain "cmd"
             }
         }
@@ -219,7 +207,7 @@ Describe "E2E scenarios for ssh client" -Tags "CI" {
         AfterAll{$tC++}
 
         It "$tC.$tI - verbose to file (-v -E)" {
-            $o = ssh -v -E $logFile test_target echo 1234
+            $o = ssh -v -E $logFile ptest_target echo 1234
             $o | Should Be "1234"
             #TODO - checks below are very inefficient (time taking). 
             $logFile | Should Contain "OpenSSH_"
@@ -229,10 +217,10 @@ Describe "E2E scenarios for ssh client" -Tags "CI" {
 
         It "$tC.$tI - cipher options (-c)" {
             #bad cipher
-            iex "cmd /c `"ssh -c bad_cipher test_target echo 1234 2>$stderrFile`""
+            iex "cmd /c `"ssh -c bad_cipher ptest_target echo 1234 2>$stderrFile`""
             $stderrFile | Should Contain "Unknown cipher type"
             #good cipher, ensure cipher is used from debug logs
-            $o = ssh -c aes256-ctr  -v -E $logFile test_target echo 1234
+            $o = ssh -c aes256-ctr  -v -E $logFile ptest_target echo 1234
             $o | Should Be "1234"
             $logFile | Should Contain "kex: server->client cipher: aes256-ctr"
             $logFile | Should Contain "kex: client->server cipher: aes256-ctr"
@@ -242,7 +230,7 @@ Describe "E2E scenarios for ssh client" -Tags "CI" {
             #ensure -F is working by pointing to a bad configuration
             $badConfigFile = Join-Path $testDir "$tC.$tI.bad_ssh_config"
             "bad_config_line" | Set-Content $badConfigFile
-            iex "cmd /c `"ssh -F $badConfigFile test_target echo 1234 2>$stderrFile`""
+            iex "cmd /c `"ssh -F $badConfigFile ptest_target echo 1234 2>$stderrFile`""
             $stderrFile | Should Contain "bad_ssh_config"
             $stderrFile | Should Contain "bad_config_line"
             $stderrFile | Should Contain "bad configuration options"
@@ -263,11 +251,11 @@ Describe "E2E scenarios for ssh client" -Tags "CI" {
             # TODO - this test assumes target is localhost. 
             # make it work independent of target
             #-4
-            $o = ssh -4 -v -E $logFile test_target echo 1234
+            $o = ssh -4 -v -E $logFile ptest_target echo 1234
             $o | Should Be "1234"
             $logFile | Should Contain "[127.0.0.1]"
             #-4
-            $o = ssh -6 -v -E $logFile test_target echo 1234
+            $o = ssh -6 -v -E $logFile ptest_target echo 1234
             $o | Should Be "1234"
             $logFile | Should Contain "[::1]"            
         }
