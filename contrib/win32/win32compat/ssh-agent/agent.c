@@ -82,13 +82,18 @@ agent_listen_loop()
 {
 	DWORD  r;
 	HANDLE wait_events[2];
+	wchar_t *pipe_id = NULL;
 
 	wait_events[0] = event_stop_agent;
 	wait_events[1] = ol.hEvent;
 
+	pipe_id = _wgetenv(L"SSH_AUTH_SOCK");
+	if (!pipe_id)
+		pipe_id = AGENT_PIPE_ID;
+
 	while (1) {
 		pipe = CreateNamedPipeW(
-			AGENT_PIPE_ID,		  // pipe name 
+			pipe_id,		  // pipe name 
 			PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,       // read/write access 
 			PIPE_TYPE_BYTE |       // message type pipe 
 			PIPE_READMODE_BYTE |   // message-read mode 
@@ -128,34 +133,11 @@ agent_listen_loop()
 			pipe = INVALID_HANDLE_VALUE;
 			GetNamedPipeClientProcessId(con, &client_pid);
 			verbose("client pid %d connected", client_pid);
-			if (debug_mode) {
+			{
 				agent_process_connection(con);
-				agent_cleanup();
-				return;
-			} else {
-				/* spawn a child to take care of this*/
-				wchar_t path[PATH_MAX], module_path[PATH_MAX];
-				PROCESS_INFORMATION pi;
-				STARTUPINFOW si;
-
-				si.cb = sizeof(STARTUPINFOW);
-				memset(&si, 0, sizeof(STARTUPINFOW));
-				GetModuleFileNameW(NULL, module_path, PATH_MAX);
-				SetHandleInformation(con, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-				if ((swprintf_s(path, PATH_MAX, L"%s %d", module_path, (int)(intptr_t)con) == -1 ) ||
-				    (CreateProcessW(NULL, path, NULL, NULL, TRUE,
-					DETACHED_PROCESS, NULL, NULL,
-					&si, &pi) == FALSE)) {
-					verbose("Failed to create child process %ls ERROR:%d", module_path, GetLastError());
-				} else {
-					debug("spawned worker %d for agent client pid %d ", pi.dwProcessId, client_pid);
-					CloseHandle(pi.hProcess);
-					CloseHandle(pi.hThread);
-				}
-				SetHandleInformation(con, HANDLE_FLAG_INHERIT, 0);
-				CloseHandle(con);				
-			}
-			
+				//agent_cleanup();
+				continue;
+			} 			
 		} else {
 			fatal("wait on events ended with %d ERROR:%d", r, GetLastError());
 		}
@@ -204,10 +186,6 @@ agent_start(BOOL dbg_mode)
 	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl_str, SDDL_REVISION_1,
 	    &sa.lpSecurityDescriptor, &sa.nLength))
 		fatal("cannot convert sddl ERROR:%d", GetLastError());
-	if ((r = RegCreateKeyExW(HKEY_LOCAL_MACHINE, SSH_AGENT_ROOT, 0, 0, 0, KEY_WRITE, &sa, &agent_root, 0)) != ERROR_SUCCESS)
-		fatal("cannot create agent root reg key, ERROR:%d", r);
-	if ((r = RegSetValueExW(agent_root, L"ProcessID", 0, REG_DWORD, (BYTE*)&process_id, 4)) != ERROR_SUCCESS)
-		fatal("cannot publish agent master process id ERROR:%d", r);
 	if ((event_stop_agent = CreateEvent(NULL, TRUE, FALSE, NULL)) == NULL)
 		fatal("cannot create global stop event ERROR:%d", GetLastError());
 	if ((ol.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL)) == NULL)
