@@ -407,6 +407,7 @@
     <ClCompile Include="$(OpenSSH-Src-Path)\contrib\win32\win32compat\ssh-agent\agent.c" />
     <ClCompile Include="$(OpenSSH-Src-Path)\contrib\win32\win32compat\ssh-agent\connection.c" />
     <ClCompile Include="$(OpenSSH-Src-Path)\contrib\win32\win32compat\ssh-agent\keyagent-request.c" />
+    <ClCompile Include="..\win32compat\ssh-agent\azrouter.c" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="openssh-events.rc" />

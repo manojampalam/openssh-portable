@@ -115,8 +115,8 @@ done:
 
 #define REG_KEY_SDDL L"D:P(A;; GA;;; SY)(A;; GA;;; BA)"
 
-static 
-int add_identity(char* thumbprint, char* pubkey_blob, int pubkey_blob_len, char* blob, int blob_len,
+static int
+__add_identity(char* thumbprint, char* pubkey_blob, int pubkey_blob_len, char* blob, int blob_len,
 	char* comment, int comment_len, char type, struct agent_connection* con)
 {
 	char* eblob = NULL;
@@ -156,8 +156,8 @@ int add_identity(char* thumbprint, char* pubkey_blob, int pubkey_blob_len, char*
 }
 
 
-static
-int get_privkeyblob(char* thumbprint, char** blob, int* blob_len, struct agent_connection* con)
+static int 
+__get_privkeyblob(char* thumbprint, char** blob, int* blob_len, struct agent_connection* con)
 {
 	HKEY reg = 0, sub = 0, user_root = 0;
 	DWORD regdatalen = 0, keyblob_len = 0;
@@ -192,7 +192,7 @@ int get_privkeyblob(char* thumbprint, char** blob, int* blob_len, struct agent_c
 }
 
 static int
-delete_identity(char* thumbprint, struct agent_connection* con) {
+__delete_identity(char* thumbprint, struct agent_connection* con) {
 
 	HKEY user_root = 0, root = 0;
 
@@ -211,7 +211,7 @@ delete_identity(char* thumbprint, struct agent_connection* con) {
 }
 
 static int
-delete_all(struct agent_connection* con)
+__delete_all(struct agent_connection* con)
 {
 	HKEY user_root = 0, root = 0;
 	if (get_user_root(con, &user_root) != 0 ||
@@ -232,7 +232,7 @@ delete_all(struct agent_connection* con)
 
 
 static int
-get_all_pubkeys(char* pubkey_blobs[32], int pubkey_blob_len[32], char* comments[32], int comment_len[32], struct agent_connection* con)
+__get_all_pubkeys(char* pubkey_blobs[32], int pubkey_blob_len[32], char* comments[32], int comment_len[32], struct agent_connection* con)
 {
 	HKEY root = NULL, sub = NULL, user_root = 0;
 	wchar_t sub_name[MAX_KEY_LENGTH];
