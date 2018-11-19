@@ -1,27 +1,122 @@
 #include <Windows.h>
 
+#define BUFSIZE 4096 
+
+HANDLE g_hChildStd_IN_Rd = NULL;
+HANDLE g_hChildStd_IN_Wr = NULL;
+HANDLE g_hChildStd_OUT_Rd = NULL;
+HANDLE g_hChildStd_OUT_Wr = NULL;
 
 
+void CreateChildProcess(void);
+void ErrorExit(PTSTR str) {};
 
-#define BPTR (entry + offset)
+void CreateChildProcess()
+// Create a child process that uses the previously created pipes for STDIN and STDOUT.
+{
+	char szCmdline[] = "C:\\temp\\AKVBroker\\bin\\Debug\\Microsoft.Azure.SSHKeyAgent.exe";
+	//TEXT("C:\\Temp\\sample\\csharpapp\\csharpapp\\bin\\Debug\\csharpapp.exe");
+	PROCESS_INFORMATION piProcInfo;
+	STARTUPINFO siStartInfo;
+	BOOL bSuccess = FALSE;
 
-static char g_buf[1024 * 10];
-static int g_buf_len = 0;
+	// Set up members of the PROCESS_INFORMATION structure. 
+
+	ZeroMemory(&piProcInfo, sizeof(PROCESS_INFORMATION));
+
+	// Set up members of the STARTUPINFO structure. 
+	// This structure specifies the STDIN and STDOUT handles for redirection.
+
+	ZeroMemory(&siStartInfo, sizeof(STARTUPINFO));
+	siStartInfo.cb = sizeof(STARTUPINFO);
+	siStartInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+	siStartInfo.hStdOutput = g_hChildStd_OUT_Wr;
+	siStartInfo.hStdInput = g_hChildStd_IN_Rd;
+	siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
+
+	// Create the child process. 
+
+	bSuccess = CreateProcessA(NULL,
+		szCmdline,     // command line 
+		NULL,          // process security attributes 
+		NULL,          // primary thread security attributes 
+		TRUE,          // handles are inherited 
+		0,             // creation flags 
+		NULL,          // use parent's environment 
+		NULL,          // use parent's current directory 
+		&siStartInfo,  // STARTUPINFO pointer 
+		&piProcInfo);  // receives PROCESS_INFORMATION 
+
+			       // If an error occurs, exit the application. 
+	if (!bSuccess)
+		ErrorExit(TEXT("CreateProcess"));
+	else
+	{
+		// Close handles to the child process and its primary thread.
+		// Some applications might keep these handles to monitor the status
+		// of the child process, for example. 
+
+		CloseHandle(piProcInfo.hProcess);
+		CloseHandle(piProcInfo.hThread);
+	}
+}
+
+int start_managed_worker() {
+	SECURITY_ATTRIBUTES saAttr;
+	saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
+	saAttr.bInheritHandle = TRUE;
+	saAttr.lpSecurityDescriptor = NULL;
+	if (!CreatePipe(&g_hChildStd_OUT_Rd, &g_hChildStd_OUT_Wr, &saAttr, 0))
+		ErrorExit(TEXT("StdoutRd CreatePipe"));
+	if (!SetHandleInformation(g_hChildStd_OUT_Rd, HANDLE_FLAG_INHERIT, 0))
+		ErrorExit(TEXT("Stdout SetHandleInformation"));
+	if (!CreatePipe(&g_hChildStd_IN_Rd, &g_hChildStd_IN_Wr, &saAttr, 0))
+		ErrorExit(TEXT("Stdin CreatePipe"));
+	if (!SetHandleInformation(g_hChildStd_IN_Wr, HANDLE_FLAG_INHERIT, 0))
+		ErrorExit(TEXT("Stdin SetHandleInformation"));
+
+	// Create the child process. 
+	CreateChildProcess();
+
+	CloseHandle(g_hChildStd_OUT_Wr);
+	CloseHandle(g_hChildStd_IN_Rd);
+
+
+	return 0;
+}
+
 static int save_entry(char* key, char* buf, int buf_len) {
+	DWORD dwWritten, dwRead;
+	BOOL bSuccess = FALSE;
+	char type = 1, ret= 0;
 
-	g_buf_len = buf_len;
-	memcpy(g_buf, buf, buf_len);
+	bSuccess = WriteFile(g_hChildStd_IN_Wr, &type, 1, &dwWritten, NULL);
+	bSuccess = WriteFile(g_hChildStd_IN_Wr, &buf_len, 4, &dwWritten, NULL);
+	bSuccess = WriteFile(g_hChildStd_IN_Wr, buf, buf_len, &dwWritten, NULL);
+
+	DWORD siz_recv;
+	bSuccess = ReadFile(g_hChildStd_OUT_Rd, &ret, 1, &dwRead, NULL);
 	return 0;
 }
 
 static int get_entry(char* key, char** buf, int* buf_len) {
-	char* ret = malloc(g_buf_len);
-	*buf_len = g_buf_len;
-	memcpy(ret, g_buf, g_buf_len);
-	*buf = ret;
+	DWORD dwWritten, dwRead;
+	BOOL bSuccess = FALSE;
+	char type = 2, ret = 0;
+
+	bSuccess = WriteFile(g_hChildStd_IN_Wr, &type, 1, &dwWritten, NULL);
+
+	bSuccess = ReadFile(g_hChildStd_OUT_Rd, &ret, 1, &dwRead, NULL);
+	bSuccess = ReadFile(g_hChildStd_OUT_Rd, buf_len, 4, &dwRead, NULL);
+	*buf = malloc(*buf_len);
+	bSuccess = ReadFile(g_hChildStd_OUT_Rd, *buf, *buf_len, &dwRead, NULL);
+
 	return 0;
 }
 
+
+
+#define BPTR (entry + offset)
 
 int add_identity(char* thumbprint, char* pubkey_blob, int pubkey_blob_len, char* blob, int blob_len,
 	char* comment, int comment_len, char type, struct agent_connection* con)
@@ -89,9 +184,6 @@ get_all_pubkeys(char* pubkey_blobs[32], int pubkey_blob_len[32], char* comments[
 	int entry_len;
 	int count = 0;
 
-	if (g_buf_len == 0)
-		return 0;
-
 	{
 		int pubkey_len, privkey_len, com_len;
 		char *pubkey, *com;
@@ -128,11 +220,10 @@ int get_privkeyblob(char* thumbprint, char** blob, int* blob_len, struct agent_c
 
 int
 delete_identity(char* thumbprint, struct agent_connection* con) {
-	g_buf_len = 0;
-	return 0;
+	return -1; //not supported yet
 }
 
 int
 delete_all(struct agent_connection* con) {
-	delete_identity(NULL, con);
+	return delete_identity(NULL, con);
 }

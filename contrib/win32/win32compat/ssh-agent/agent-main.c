@@ -60,6 +60,7 @@ wmain(int argc, wchar_t **argv)
 	_set_invalid_parameter_handler(invalid_parameter_handler);
 	w32posix_initialize();
 	fix_cwd();
+	start_managed_worker();
 	agent_start(TRUE);
 	return 0;
 }
