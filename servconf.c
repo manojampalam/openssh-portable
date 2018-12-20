@@ -2026,10 +2026,10 @@ process_server_config_line(ServerOptions *options, char *line,
 			    linenum);
 		len = strspn(cp, WHITESPACE);
 		if (*activep && options->authorized_keys_command == NULL) {
-			if (cp[len] != '/' && strcasecmp(cp + len, "none") != 0)
+			/*if (cp[len] != '/' && strcasecmp(cp + len, "none") != 0)
 				fatal("%.200s line %d: AuthorizedKeysCommand "
 				    "must be an absolute path",
-				    filename, linenum);
+				    filename, linenum);*/
 			options->authorized_keys_command = xstrdup(cp + len);
 		}
 		return 0;

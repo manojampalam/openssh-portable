@@ -175,6 +175,56 @@ cleanup:
 	return ret;
 }
 
+int
+fileio_pipe_s(struct w32_io* pio[2])
+{
+	SECURITY_ATTRIBUTES sec_attributes;
+	HANDLE read_handle = INVALID_HANDLE_VALUE, write_handle = INVALID_HANDLE_VALUE;
+	struct w32_io *pio_read = NULL, *pio_write = NULL;
+
+	sec_attributes.bInheritHandle = TRUE;
+	sec_attributes.lpSecurityDescriptor = NULL;
+	sec_attributes.nLength = sizeof(sec_attributes);
+
+	if (CreatePipe(&read_handle, &write_handle, &sec_attributes, 0) == FALSE) {
+		errno = errno_from_Win32LastError();
+		debug3("pipe - CreatePipe() ERROR:%d", errno);
+		goto error;
+	}
+
+	/* create w32_io objects encapsulating above handles */
+	pio_read = (struct w32_io*)malloc(sizeof(struct w32_io));
+	pio_write = (struct w32_io*)malloc(sizeof(struct w32_io));
+
+	if (!pio_read || !pio_write) {
+		errno = ENOMEM;
+		debug3("pip - ERROR:%d", errno);
+		goto error;
+	}
+
+	memset(pio_read, 0, sizeof(struct w32_io));
+	memset(pio_write, 0, sizeof(struct w32_io));
+
+	pio_read->handle = read_handle;
+	pio_write->handle = write_handle;
+
+	pio[0] = pio_read;
+	pio[1] = pio_write;
+	return 0;
+
+error:
+	if (read_handle)
+		CloseHandle(read_handle);
+	if (write_handle)
+		CloseHandle(write_handle);
+	if (pio_read)
+		free(pio_read);
+	if (pio_write)
+		free(pio_write);
+	return -1;
+
+}
+
 /* used to name named pipes used to implement pipe() */
 static int pipe_counter = 0;
 
@@ -938,6 +988,49 @@ cleanup:
 	if (wmode)
 		free(wmode);
 
+	return ret;
+}
+
+/* fdopen() to be used strictly on nonoverlapped IO handles */
+FILE*
+fileio_fdopen_s(struct w32_io* pio, const char *mode)
+{
+	int fd_flags = 0;
+	FILE* ret;
+	debug4("fdopen - io:%p", pio);
+
+	/* logic below doesn't work with overlapped file HANDLES */
+	if (mode[1] == '\0') {
+		switch (*mode) {
+		case 'r':
+			fd_flags = _O_RDONLY;
+			break;
+		case 'w':
+			break;
+		case 'a':
+			fd_flags = _O_APPEND;
+			break;
+		default:
+			errno = ENOTSUP;
+			debug3("fdopen - ERROR unsupported mode %s", mode);
+			return NULL;
+		}
+	}
+	else {
+		errno = ENOTSUP;
+		debug3("fdopen - ERROR unsupported mode %s", mode);
+		return NULL;
+	}
+
+	int fd = _open_osfhandle((intptr_t)pio->handle, fd_flags);
+
+	if (fd == -1 || (ret = _fdopen(fd, mode)) == NULL) {
+		errno = EOTHER;
+		debug3("fdopen - ERROR:%d _open_osfhandle()", errno);
+		return NULL;
+	}
+
+	// TODO - add logic to close win32 handle in "pio" on fclose(fd)
 	return ret;
 }
 

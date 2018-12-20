@@ -18,6 +18,7 @@ int w32_ftruncate(int, off_t);
 
 #define pipe w32_pipe
 int w32_pipe(int *pfds);
+int pipe_s(int *pfds);
 
 #define read w32_read
 int w32_read(int fd, void *dst, size_t max);

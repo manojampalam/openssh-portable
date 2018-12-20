@@ -920,6 +920,7 @@ subprocess(const char *tag, struct passwd *pw, const char *command,
 		return 0;
 	}
 
+#ifndef  WINDOWS
 	/*
 	 * If executing an explicit binary, then verify the it exists
 	 * and appears safe-ish to execute
@@ -940,18 +941,34 @@ subprocess(const char *tag, struct passwd *pw, const char *command,
 		restore_uid();
 		return 0;
 	}
+#endif // ! WINDOWS
+
 	/* Prepare to keep the child's stdout if requested */
-	if (pipe(p) != 0) {
+	if (pipe_s(p) != 0) {
 		error("%s: pipe: %s", tag, strerror(errno));
 		restore_uid();
 		return 0;
 	}
 	restore_uid();
 
+#ifdef FORK_NOT_SUPPORTED
+	{
+		posix_spawn_file_actions_t actions;
+		pid = -1;
+
+		//TODO - run as pw user
+		if (posix_spawn_file_actions_init(&actions) != 0 ||
+			posix_spawn_file_actions_adddup2(&actions, p[1], STDOUT_FILENO) != 0)
+			fatal("posix_spawn initialization failed");
+		else if (posix_spawn((pid_t*)&pid, av[0], &actions, NULL, av, NULL) != 0)
+			fatal("posix_spawn: %s", strerror(errno));
+
+		posix_spawn_file_actions_destroy(&actions);
+	}
+#else 
 	switch ((pid = fork())) {
 	case -1: /* error */
 		error("%s: fork: %s", tag, strerror(errno));
-		close(p[0]);
 		close(p[1]);
 		return 0;
 	case 0: /* child */
@@ -1014,6 +1031,7 @@ subprocess(const char *tag, struct passwd *pw, const char *command,
 	default: /* parent */
 		break;
 	}
+#endif
 
 	close(p[1]);
 	if ((flags & SSH_SUBPROCESS_STDOUT_CAPTURE) == 0)

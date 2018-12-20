@@ -512,6 +512,39 @@ w32_pipe(int *pfds)
 }
 
 int
+pipe_s(int *pfds)
+{
+	int read_index, write_index;
+	struct w32_io* pio[2];
+
+	errno = 0;
+	read_index = fd_table_get_min_index();
+	if (read_index == -1)
+		return -1;
+
+	/*temporarily set occupied bit*/
+	FD_SET(read_index, &fd_table.occupied);
+	write_index = fd_table_get_min_index();
+	FD_CLR(read_index, &fd_table.occupied);
+	if (write_index == -1)
+		return -1;
+
+	if (-1 == fileio_pipe_s(pio))
+		return -1;
+
+	pio[0]->type = NONSOCK_SYNC_FD;
+	pio[1]->type = NONSOCK_SYNC_FD;
+	fd_table_set(pio[0], read_index);
+	fd_table_set(pio[1], write_index);
+	pfds[0] = read_index;
+	pfds[1] = write_index;
+	debug4("pipe - r-h:%d,io:%p,fd:%d  w-h:%d,io:%p,fd:%d",
+		pio[0]->handle, pio[0], read_index, pio[1]->handle, pio[1], write_index);
+
+	return 0;
+}
+
+int
 w32_open(const char *pathname, int flags, ... /* arg */)
 {
 	int min_index = fd_table_get_min_index();
@@ -618,7 +651,10 @@ w32_fdopen(int fd, const char *mode)
 		debug3("fdopen - ERROR bad fd: %d", fd);
 		return NULL;
 	}
-	return fileio_fdopen(fd_table.w32_ios[fd], mode);
+	if (fd_table.w32_ios[fd]->type = NONSOCK_SYNC_FD)
+		return fileio_fdopen_s(fd_table.w32_ios[fd], mode);
+	else
+		return fileio_fdopen(fd_table.w32_ios[fd], mode);
 }
 
 int
