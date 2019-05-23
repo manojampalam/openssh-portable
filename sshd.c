@@ -501,14 +501,15 @@ static void recv_config_state(int fd, struct sshbuf *conf)
 
 
 static void
-send_idexch_state(int fd)
+send_idexch_state(struct ssh *ssh, int fd)
 {
 	struct sshbuf *m;
 
 	if ((m = sshbuf_new()) == NULL)
 		fatal("%s: sshbuf_new failed", __func__);
-	if (sshbuf_put_cstring(m, client_version_string) != 0 ||
-	    sshbuf_put_cstring(m, server_version_string) != 0)
+
+	if (sshbuf_put_stringb(m, ssh->kex->client_version) != 0  ||
+	    sshbuf_put_stringb(m, ssh->kex->server_version) != 0 )
 		fatal("%s: buffer error", __func__);
 
 	if (ssh_msg_send(fd, 0, m) == -1)
@@ -518,12 +519,14 @@ send_idexch_state(int fd)
 }
 
 static void
-recv_idexch_state(int fd)
+recv_idexch_state(struct ssh *ssh, int fd)
 {
 	struct sshbuf *m;
 	u_char *cp, ver;
 	size_t tmp;
 	int r;
+	const u_char *valp;
+	size_t lenp;
 	
 	debug3("%s: entering fd = %d", __func__, fd);
 
@@ -536,8 +539,10 @@ recv_idexch_state(int fd)
 	if (ver != 0)
 		fatal("%s: rexec version mismatch", __func__);
 
-	if (sshbuf_get_cstring(m, &client_version_string, &tmp) != 0 ||
-	    sshbuf_get_cstring(m, &server_version_string, &tmp) != 0 )
+	if (sshbuf_get_string_direct(m, &valp, &lenp) != 0 ||
+	    (ssh->kex->client_version = sshbuf_from(valp, lenp)) == NULL ||
+	    sshbuf_get_string_direct(m, &valp, &lenp) != 0 ||
+	    (ssh->kex->server_version = sshbuf_from(valp, lenp)) == NULL )
 		fatal("%s: unable to retrieve idexch state", __func__);
 
 	sshbuf_free(m);
@@ -734,8 +739,9 @@ privsep_preauth(struct ssh *ssh)
 
 #ifdef FORK_NOT_SUPPORTED
 	if (privsep_auth_child) {
+		Authctxt *authctxt = ssh->authctxt;
 		recv_autxctx_state(authctxt, PRIVSEP_MONITOR_FD);
-		authctxt->pw = getpwnamallow(authctxt->user);
+		authctxt->pw = getpwnamallow(ssh, authctxt->user);
 		authctxt->valid = 1;
 		return 1;
 	}
@@ -792,8 +798,8 @@ privsep_preauth(struct ssh *ssh)
 		close(pmonitor->m_log_sendfd);
 		send_config_state(pmonitor->m_sendfd, cfg);
 		send_hostkeys_state(pmonitor->m_sendfd);
-		send_idexch_state(pmonitor->m_sendfd);
-		monitor_child_preauth(authctxt, pmonitor);
+		send_idexch_state(ssh, pmonitor->m_sendfd);
+		monitor_child_preauth(ssh, pmonitor);
 		while (waitpid(pid, &status, 0) < 0) {
 			if (errno == EINTR)
 				continue;
@@ -899,12 +905,12 @@ privsep_postauth(struct ssh *ssh, Authctxt *authctxt)
 		verbose("User child is on pid %ld", (long)pmonitor->m_pid);
 		send_config_state(pmonitor->m_sendfd, cfg);
 		send_hostkeys_state(pmonitor->m_sendfd);
-		send_idexch_state(pmonitor->m_sendfd);
+		send_idexch_state(ssh, pmonitor->m_sendfd);
 		send_autxctx_state(authctxt, pmonitor->m_sendfd);
 		monitor_send_keystate(pmonitor);
-		monitor_clear_keystate(pmonitor);
+		monitor_clear_keystate(ssh, pmonitor);
 		monitor_send_authopt(pmonitor, 0); // 0 - trusted.
-		monitor_child_postauth(pmonitor);
+		monitor_child_postauth(ssh, pmonitor);
 		/* NEVERREACHED */
 		exit(0);
 	}
@@ -917,9 +923,9 @@ privsep_postauth(struct ssh *ssh, Authctxt *authctxt)
 	monitor_recv_keystate(pmonitor);
 
 	do_setusercontext(authctxt->pw);
-	monitor_apply_keystate(pmonitor);
+	monitor_apply_keystate(ssh, pmonitor);
 	monitor_recv_authopt(pmonitor);
-	packet_set_authenticated();
+	ssh_packet_set_authenticated(ssh);
 skip:
 	return;
 
@@ -2482,7 +2488,7 @@ done_loading_hostkeys:
 	rdomain = ssh_packet_rdomain_in(ssh);
 
 	if (privsep_unauth_child || privsep_auth_child) {
-		recv_idexch_state(PRIVSEP_MONITOR_FD);
+		recv_idexch_state(ssh, PRIVSEP_MONITOR_FD);
 		goto idexch_done;
 	}
 	/* Log the connection. */
