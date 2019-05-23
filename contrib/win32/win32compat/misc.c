@@ -586,6 +586,14 @@ w32_chown(const char *pathname, unsigned int owner, unsigned int group)
 	return -1;
 }
 
+int 
+w32_fchown( int fd, unsigned int owner, unsigned int group)
+{
+	/* TODO - implement this */
+	errno = EOPNOTSUPP;
+	return -1;
+}
+
 /* Convert a UNIX time into a Windows file time */
 void
 unix_time_to_file_time(ULONG t, LPFILETIME pft)
@@ -1898,6 +1906,14 @@ int
 getrrsetbyname(const char *hostname, unsigned int rdclass,
 	unsigned int rdtype, unsigned int flags,
 	struct rrsetinfo **res)
+{
+	verbose("%s is not supported", __func__);
+	errno = ENOTSUP;
+	return -1;
+}
+
+int 
+fnmatch(const char *pattern, const char *string, int flags)
 {
 	verbose("%s is not supported", __func__);
 	errno = ENOTSUP;
