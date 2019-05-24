@@ -539,10 +539,8 @@ recv_idexch_state(struct ssh *ssh, int fd)
 	if (ver != 0)
 		fatal("%s: rexec version mismatch", __func__);
 
-	if (sshbuf_get_string_direct(m, &valp, &lenp) != 0 ||
-	    (ssh->kex->client_version = sshbuf_from(valp, lenp)) == NULL ||
-	    sshbuf_get_string_direct(m, &valp, &lenp) != 0 ||
-	    (ssh->kex->server_version = sshbuf_from(valp, lenp)) == NULL )
+	if (sshbuf_get_stringb(m, ssh->kex->client_version) != 0 ||
+	    sshbuf_get_stringb(m, ssh->kex->server_version) != 0 )
 		fatal("%s: unable to retrieve idexch state", __func__);
 
 	sshbuf_free(m);
