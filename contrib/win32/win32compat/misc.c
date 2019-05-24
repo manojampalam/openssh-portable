@@ -1915,9 +1915,28 @@ getrrsetbyname(const char *hostname, unsigned int rdclass,
 int 
 fnmatch(const char *pattern, const char *string, int flags)
 {
-	verbose("%s is not supported", __func__);
-	errno = ENOTSUP;
-	return -1;
+	int r = -1;
+	wchar_t *pw = NULL, *sw = NULL;
+
+	if (flags) {
+		verbose("%s is not supported with flags", __func__);
+		goto done;
+	}
+
+	pw = utf8_to_utf16(pattern);
+	sw = utf8_to_utf16(string);
+	if (!pw || !sw)
+		goto done;
+	convertToBackslashW(pw);
+	convertToBackslashW(sw);
+	if (PathMatchSpecW(sw, pw))
+		r = 0;
+done:
+	if (pw)
+		free(pw);
+	if (sw)
+		free(sw);
+	return r;
 }
 
 void
